@@ -13,6 +13,11 @@ async function init(sql){
  await sql`CREATE INDEX IF NOT EXISTS wf_messages_room_idx ON wf_messages(room_id,id)`;
  await sql`CREATE TABLE IF NOT EXISTS wf_limits (bucket text PRIMARY KEY, hits integer NOT NULL, expires timestamptz NOT NULL)`;
 }
+async function accountAttempt(sql,username){
+ const bucket='account:'+hash(username);
+ const [limit]=await sql`INSERT INTO wf_limits(bucket,hits,expires) VALUES (${bucket},1,now()+interval '15 minutes') ON CONFLICT(bucket) DO UPDATE SET hits=CASE WHEN wf_limits.expires<now() THEN 1 ELSE wf_limits.hits+1 END,expires=CASE WHEN wf_limits.expires<now() THEN now()+interval '15 minutes' ELSE wf_limits.expires END RETURNING hits`;
+ return {allowed:limit.hits<=5,bucket};
+}
 export function createHandler(connect=neon){
 let initialized;
 return async function handler(req,res){
@@ -34,13 +39,16 @@ return async function handler(req,res){
  const [limit]=await sql`INSERT INTO wf_limits(bucket,hits,expires) VALUES (${bucket},1,now()+interval '15 minutes') ON CONFLICT(bucket) DO UPDATE SET hits=CASE WHEN wf_limits.expires<now() THEN 1 ELSE wf_limits.hits+1 END,expires=CASE WHEN wf_limits.expires<now() THEN now()+interval '15 minutes' ELSE wf_limits.expires END RETURNING hits`;
  if(limit.hits>20)return fail(429,'Muitas tentativas. Aguarde 15 minutos.');
  const username=String(b.username||'').trim().toLowerCase(),password=String(b.password||'');
- if(!/^[a-z0-9_.-]{3,40}$/.test(username)||password.length<10||password.length>128)return fail(400,'Use um usuário de 3 a 40 letras/números e senha de 10 a 128 caracteres.');
+ if(!/^[a-z0-9_.-]{3,40}$/.test(username)||(!/^\d{4}$/.test(password)&&password.length<10)||password.length>128)return fail(400,'Use um usuário de 3 a 40 letras/números e PIN de 4 números (ou sua senha anterior).');
  let account,invite;
  if(action==='login'){
+ const attempt=await accountAttempt(sql,username);
+ if(!attempt.allowed)return fail(429,'Muitas tentativas para este usuário. Aguarde 15 minutos.');
  [account]=await sql`SELECT * FROM wf_users WHERE username=${username}`;
  const stored=account?.password||('0'.repeat(32)+':'+ '0'.repeat(128));const [salt,digest]=stored.split(':');
  const valid=timingSafeEqual(scryptSync(password,salt,64),Buffer.from(digest,'hex'));
  if(!account||!valid)return fail(401,'Usuário ou senha incorretos.');
+ await sql`DELETE FROM wf_limits WHERE bucket=${attempt.bucket}`;
  }else{
  const name=String(b.name||'').trim();if(!name||name.length>60)return fail(400,'Informe um nome de até 60 caracteres.');
  const id=secret(),salt=randomBytes(16).toString('hex');const digest=salt+':'+scryptSync(password,salt,64).toString('hex');
@@ -58,6 +66,18 @@ return async function handler(req,res){
  return res.json({user:{id:account.id,name:account.name},invite});
  }
  if(!user)return fail(401,'Entre para conversar.');
+ if(action==='pin'){
+ const pin=String(b.pin||''),current=String(b.current||'');
+ if(!/^\d{4}$/.test(pin)||current.length>128)return fail(400,'O PIN precisa ter exatamente 4 números.');
+ const [account]=await sql`SELECT * FROM wf_users WHERE id=${user.id}`;
+ const attempt=await accountAttempt(sql,account.username);
+ if(!attempt.allowed)return fail(429,'Muitas tentativas para este usuário. Aguarde 15 minutos.');
+ const [salt,digest]=account.password.split(':');
+ if(!timingSafeEqual(scryptSync(current,salt,64),Buffer.from(digest,'hex')))return fail(401,'Senha atual incorreta.');
+ const nextSalt=randomBytes(16).toString('hex');const password=nextSalt+':'+scryptSync(pin,nextSalt,64).toString('hex');
+ await sql.transaction([sql`UPDATE wf_users SET password=${password} WHERE id=${user.id}`,sql`DELETE FROM wf_sessions WHERE user_id=${user.id} AND token_hash<>${hash(cookie)}`,sql`DELETE FROM wf_limits WHERE bucket=${attempt.bucket}`]);
+ return res.json({ok:true});
+ }
  if(action==='invite'){const invite=inviteCode();await sql`UPDATE wf_rooms SET invite_hash=${hash(invite)} WHERE id=${user.room_id}`;return res.json({invite});}
  if(action==='logout'){await sql`DELETE FROM wf_sessions WHERE token_hash=${hash(cookie)}`;res.setHeader('Set-Cookie','wf_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0');return res.json({ok:true});}
  if(action==='send'){

@@ -3,7 +3,7 @@ Chat privado por convite, React + API Vercel + Neon Postgres.
 
 ## Usar
 1. Na Vercel, conecte o banco Neon ao projeto WhatsFamily (Storage → banco → Connect Project). A integração fornece DATABASE_URL ou POSTGRES_URL. Faça novo deploy após conectar. Nunca publique a conexão nem use prefixo VITE_. Redefina senhas de banco que tenham sido expostas.
-2. Abra o aplicativo e toque em **Criar família**. Escolha nome, usuário e senha (mínimo 10 caracteres).
+2. Abra o aplicativo e toque em **Criar família**. Escolha nome, usuário e PIN de 4 números.
 3. Guarde o código exibido. No celular da filha, abra o mesmo endereço, toque em **Tenho convite** e crie o acesso dela usando esse código. Compartilhe o código somente com a família.
 4. Nas próximas vezes basta **Entrar**. Adicione o endereço à tela inicial pelo navegador.
 
@@ -13,6 +13,6 @@ As tabelas são criadas automaticamente pela API. Famílias diferentes têm sala
 Node 24. `npm ci --cache /tmp/npm-cache`, `npm run build`. Para executar frontend e API juntos use `npx vercel dev` com DATABASE_URL configurada no ambiente do servidor. `npm run dev` serve apenas a interface e não executa a API. Vercel detecta Vite e as funções em api/. Build: npm run build; saída: dist.
 
 ## Proteções e limites
-Senhas com scrypt e salt, sessões aleatórias de 30 dias em cookies HttpOnly/Secure/SameSite, tokens e convites armazenados como hashes, SQL parametrizado, autorização por sala no servidor, limite persistente de tentativas de login/cadastro por IP. Conexão de banco somente no servidor. HTTPS obrigatório para cookies de sessão.
+Senhas com scrypt e salt, sessões aleatórias de 30 dias em cookies HttpOnly/Secure/SameSite, tokens e convites armazenados como hashes, SQL parametrizado, autorização por sala no servidor, limite persistente por IP e bloqueio de login por usuário por 15 minutos após 5 tentativas incorretas. PINs curtos são menos resistentes a adivinhação que senhas longas. Senhas anteriores continuam funcionando; use Meu PIN dentro da conversa para trocar, confirmando a senha atual. A troca encerra as outras sessões da conta. Conexão de banco somente no servidor. HTTPS obrigatório para cookies de sessão.
 
 Últimas 100 mensagens, atualizadas a cada 3 segundos com o app aberto. Sem áudio, chamadas, notificações push ou criptografia de ponta a ponta. Não use como canal único de emergência. Administradores do banco podem ler conteúdo. Credenciais do banco precisam ser configuradas na Vercel; apenas o frontend não permite conversar.
