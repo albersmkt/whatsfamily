@@ -6,7 +6,7 @@ export default function AudioRecorder({disabled,onSend}){
  function release(){clearInterval(timer.current);stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;}
  useEffect(()=>()=>{mounted.current=false;const r=recording.current;if(r&&r.state!=='inactive'){r.onstop=null;r.stop();}release();if(preview.current)URL.revokeObjectURL(preview.current);},[]);
  function discard(){if(preview.current)URL.revokeObjectURL(preview.current);preview.current=null;setDraft(null);setPhase('idle');setError('');}
- function stop(){if(recording.current?.state==='recording'){recording.current.stop();setPhase('processing');release();}}
+ function stop(){if(recording.current?.state==='recording'){setPhase('processing');recording.current.stop();release();}}
  async function start(){
  setError('');if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){setError('Este navegador não permite gravar. Abra em um navegador atualizado, pelo endereço HTTPS.');return;}
  setPhase('permission');
