@@ -1,3 +1,4 @@
+import {calls} from '../server/calls.js';
 import {neon} from '@neondatabase/serverless';
 import {randomBytes, scryptSync, timingSafeEqual, createHash} from 'node:crypto';
 const hash=x=>createHash('sha256').update(x).digest('hex');
@@ -14,6 +15,10 @@ async function init(sql){
  await sql`ALTER TABLE wf_messages ADD COLUMN IF NOT EXISTS audio_data text`;
  await sql`ALTER TABLE wf_messages ADD COLUMN IF NOT EXISTS audio_type text`;
  await sql`CREATE INDEX IF NOT EXISTS wf_messages_room_idx ON wf_messages(room_id,id)`;
+ await sql`CREATE TABLE IF NOT EXISTS wf_calls (id text PRIMARY KEY,room_id text NOT NULL REFERENCES wf_rooms(id),caller text NOT NULL REFERENCES wf_users(id),callee text NOT NULL REFERENCES wf_users(id),state text NOT NULL,offer text,answer text,created_at timestamptz NOT NULL DEFAULT now(),expires timestamptz NOT NULL)`;
+ await sql`ALTER TABLE wf_calls ADD COLUMN IF NOT EXISTS caller_seen timestamptz NOT NULL DEFAULT now()`;
+ await sql`ALTER TABLE wf_calls ADD COLUMN IF NOT EXISTS callee_seen timestamptz NOT NULL DEFAULT now()`;
+ await sql`CREATE UNIQUE INDEX IF NOT EXISTS wf_calls_one_active ON wf_calls(room_id) WHERE state<>'ended'`;
  await sql`CREATE TABLE IF NOT EXISTS wf_limits (bucket text PRIMARY KEY, hits integer NOT NULL, expires timestamptz NOT NULL)`;
 }
 async function accountAttempt(sql,username){
@@ -69,6 +74,7 @@ return async function handler(req,res){
  return res.json({user:{id:account.id,name:account.name},invite});
  }
  if(!user)return fail(401,'Entre para conversar.');
+ if(action==='call'){const result=await calls(sql,user,b);return res.status(result.status||200).json(result.data);}
  if(req.method==='GET'&&req.query?.audio){
  const id=String(req.query.audio);if(!/^\d{1,19}$/.test(id))return fail(400,'Áudio inválido.');
  const [audio]=await sql`SELECT audio_data,audio_type FROM wf_messages WHERE id=${id} AND room_id=${user.room_id} AND (recipient_id IS NULL OR sender_id=${user.id} OR recipient_id=${user.id})`;

@@ -15,7 +15,7 @@ Node 24. `npm ci --cache /tmp/npm-cache`, `npm run build`. Para executar fronten
 ## Proteções e limites
 Senhas com scrypt e salt, sessões aleatórias de 30 dias em cookies HttpOnly/Secure/SameSite, tokens e convites armazenados como hashes, SQL parametrizado, autorização por sala no servidor, limite persistente por IP e bloqueio de login por usuário por 15 minutos após 5 tentativas incorretas. PINs curtos são menos resistentes a adivinhação que senhas longas. Senhas anteriores continuam funcionando; use Meu PIN dentro da conversa para trocar, confirmando a senha atual. A troca encerra as outras sessões da conta. Conexão de banco somente no servidor. HTTPS obrigatório para cookies de sessão.
 
-Últimas 100 mensagens, atualizadas a cada 3 segundos com o app aberto. Sem chamadas ou notificações push ou criptografia de ponta a ponta. Não use como canal único de emergência. Administradores do banco podem ler conteúdo. Credenciais do banco precisam ser configuradas na Vercel; apenas o frontend não permite conversar.
+Últimas 100 mensagens, atualizadas a cada 3 segundos com o app aberto. Sem notificações push ou criptografia de ponta a ponta. Não use como canal único de emergência. Administradores do banco podem ler conteúdo. Credenciais do banco precisam ser configuradas na Vercel; apenas o frontend não permite conversar.
 
 ## Limpar histórico
 Na conversa, toque em **Limpar conversa** e confirme. Isso apaga as mensagens anteriores para todos os integrantes daquela família, sem afetar outras famílias ou contas. Mensagens novas, posteriores à última exibida ao confirmar, são preservadas. Não há opção de desfazer.
@@ -25,3 +25,8 @@ Os integrantes da mesma família aparecem na barra lateral (menu ☰ no celular)
 
 ## Mensagens de voz
 Toque em Gravar áudio e permita o microfone. Pare, ouça e envie ou descarte. Limite de gravação: 60 segundos e 1 MB. WebM/Opus, MP4 e Ogg são escolhidos conforme o navegador. É necessário HTTPS e um navegador com MediaRecorder. Áudios são armazenados no Neon e entregues por uma rota autenticada, somente para participantes da conversa; a lista de mensagens não baixa os arquivos. Limpar conversa também remove os áudios. O banco armazena os arquivos pequenos para dispensar configuração de Blob; monitore o espaço do plano Neon. A gravação com microfone real em iPhone/Android precisa ser verificada no aparelho.
+
+## Ligações de voz
+Selecione um integrante e toque em Ligar. O outro participante precisa estar com o app aberto e atender. Permita acesso ao microfone em HTTPS. Há silenciamento e encerramento, uma chamada por família de cada vez, limite de 30 minutos. O servidor entrega oferta/resposta WebRTC somente aos participantes; o áudio ao vivo não é gravado no banco. Chamadas abandonadas expiram automaticamente. Testes locais verificam autorização e sinalização; microfone, reprodução e conectividade entre aparelhos exigem teste real.
+
+STUN é usado por padrão. Redes móveis, NAT restritivo ou firewalls podem exigir TURN. Para estas redes, configure TURN_URL, TURN_USERNAME e TURN_CREDENTIAL no servidor Vercel, com credenciais de um provedor TURN. Sem TURN não há garantia de conexão entre redes diferentes. As credenciais TURN são entregues somente a usuários autenticados para estabelecer WebRTC. Não há toque/notificação com o aplicativo fechado.
