@@ -36,5 +36,25 @@ test('sending, polling and malformed replies keep the chat visible',async()=>{
  memberButton.click();await settle();assert.equal(lastBody.action,'load');assert.equal(lastBody.recipient,'child');assert.match(document.querySelector('header').textContent,/Filha/);
  setValue.call(input,'Mensagem privada');input.dispatchEvent(new dom.window.Event('input',{bubbles:true}));await settle();document.querySelector('.compose').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));await settle();assert.equal(lastBody.recipient,'child');assert.equal(lastBody.action,'send');
  document.querySelector('.room-link').click();await settle();assert.equal(lastBody.recipient,'');assert.match(document.querySelector('header').textContent,/Nossa família/);
+ let stopped=0;
+ const originalNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator');
+ const originalRecorder=globalThis.MediaRecorder,originalReader=globalThis.FileReader;
+ class Recorder {
+  static isTypeSupported(type){return type.startsWith('audio/webm');}
+  state='inactive';start(){this.state='recording';}
+  stop(){this.state='inactive';this.ondataavailable?.({data:new Blob([new Uint8Array([0x1a,0x45,0xdf,0xa3])])});this.onstop?.();}
+ }
+ try{
+ Object.defineProperty(globalThis,'navigator',{configurable:true,value:{mediaDevices:{getUserMedia:async()=>({getTracks:()=>[{stop(){stopped++;}}]})}}});
+ globalThis.MediaRecorder=Recorder;window.MediaRecorder=Recorder;
+ globalThis.FileReader=class {readAsDataURL(){this.result='data:audio/webm;base64,GkXfow==';this.onload();}};
+ const findButton=text=>[...document.querySelectorAll('button')].find(b=>b.textContent===text);
+ document.querySelector('[aria-label="Gravar áudio"]').click();await settle();assert.match(document.body.textContent,/Gravando/);
+ findButton('Parar gravação').click();await settle();assert.ok(document.querySelector('.audio-preview audio'));assert.ok(stopped>0);
+ findButton('Descartar').click();await settle();assert.equal(document.querySelector('.audio-preview'),null);
+ document.querySelector('[aria-label="Gravar áudio"]').click();await settle();findButton('Parar gravação').click();await settle();findButton('Enviar áudio').click();await settle();assert.equal(lastBody.audio.type,'audio/webm');assert.equal(lastBody.action,'send');assert.equal(document.querySelector('.audio-preview'),null);
+ navigator.mediaDevices.getUserMedia=async()=>{throw Object.assign(new Error('denied'),{name:'NotAllowedError'});};
+ document.querySelector('[aria-label="Gravar áudio"]').click();await settle();assert.match(document.body.textContent,/Permita o microfone/);
+ }finally{if(originalNavigator)Object.defineProperty(globalThis,'navigator',originalNavigator);else delete globalThis.navigator;globalThis.MediaRecorder=originalRecorder;globalThis.FileReader=originalReader;}
  }finally{globalThis.setInterval=originalInterval;globalThis.clearInterval=originalClear;globalThis.fetch=originalFetch;dom.window.close();await rm(dir,{recursive:true,force:true});}
 });

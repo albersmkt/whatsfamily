@@ -8,9 +8,9 @@ test('family authentication, persistence, isolation and logout',async()=>{
  sql.transaction=queries=>db.transaction(async tx=>{const results=[];for(const q of queries)results.push((await tx.query(q.query,q.values)).rows);return results;});
  process.env.DATABASE_URL='postgresql://test-only';
  const handler=createHandler(()=>sql);let requestNumber=0;
- async function call(body,cookie='',origin='https://family.test'){
- const result={status:200,headers:{}};const res={setHeader(k,v){result.headers[k]=v;},status(n){result.status=n;return this;},json(data){result.data=data;return this;}};
- await handler({method:body?'POST':'GET',body,headers:{host:'family.test',origin,cookie,'x-forwarded-for':'192.0.2.'+(++requestNumber)}},res);
+ async function call(body,cookie='',origin='https://family.test',query={}){
+ const result={status:200,headers:{}};const res={setHeader(k,v){result.headers[k]=v;},status(n){result.status=n;return this;},json(data){result.data=data;return this;},end(bytes){result.bytes=bytes;return this;}};
+ await handler({method:body?'POST':'GET',body,query,headers:{host:'family.test',origin,cookie,'x-forwarded-for':'192.0.2.'+(++requestNumber)}},res);
  result.cookie=result.headers['Set-Cookie']?.split(';')[0];return result;
  }
  assert.equal((await call()).status,401);
@@ -67,5 +67,17 @@ test('family authentication, persistence, isolation and logout',async()=>{
  await call({action:'clear',recipient:child.data.user.id,before:privateId,confirm:true},father.cookie);
  assert.equal((await call({action:'load',recipient:father.data.user.id},childAgain.cookie)).data.messages.length,0);
  assert.equal((await call(null,father.cookie)).data.messages[0].body,'Mensagem nova');
+ const audio={type:'audio/webm',data:Buffer.from([0x1a,0x45,0xdf,0xa3,1,2,3,4]).toString('base64')};
+ const sentAudio=await call({action:'send',recipient:child.data.user.id,audio},father.cookie);assert.equal(sentAudio.status,200);
+ const audioId=String(sentAudio.data.messages.at(-1).id);assert.equal(sentAudio.data.messages.at(-1).audio_type,'audio/webm');assert.equal(sentAudio.data.messages.at(-1).audio_data,undefined);
+ const heard=await call(null,childAgain.cookie,'https://family.test',{audio:audioId});assert.equal(heard.status,200);assert.equal(heard.headers['Content-Type'],'audio/webm');assert.equal(heard.bytes.toString('base64'),audio.data);
+ assert.equal((await call(null,third.cookie,'https://family.test',{audio:audioId})).status,404);
+ assert.equal((await call(null,other.cookie,'https://family.test',{audio:audioId})).status,404);
+ assert.equal((await call(null,'','https://family.test',{audio:audioId})).status,401);
+ assert.equal((await call({action:'send',audio:{type:'audio/webm',data:'YWJjZA=='}},father.cookie)).status,400);
+ assert.equal((await call({action:'send',audio:{type:'text/html',data:audio.data}},father.cookie)).status,400);
+ assert.equal((await call({action:'send',audio:{type:'audio/webm',data:'A'.repeat(1398108)}},father.cookie)).status,400);
+ await call({action:'clear',recipient:child.data.user.id,before:audioId,confirm:true},father.cookie);
+ assert.equal((await call(null,childAgain.cookie,'https://family.test',{audio:audioId})).status,404);
  await db.close();
 });

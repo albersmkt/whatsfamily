@@ -11,6 +11,8 @@ async function init(sql){
  await sql`CREATE TABLE IF NOT EXISTS wf_sessions (token_hash text PRIMARY KEY, user_id text NOT NULL REFERENCES wf_users(id), expires timestamptz NOT NULL)`;
  await sql`CREATE TABLE IF NOT EXISTS wf_messages (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, room_id text NOT NULL REFERENCES wf_rooms(id), sender_id text NOT NULL REFERENCES wf_users(id), body text NOT NULL, created_at timestamptz NOT NULL DEFAULT now())`;
  await sql`ALTER TABLE wf_messages ADD COLUMN IF NOT EXISTS recipient_id text REFERENCES wf_users(id)`;
+ await sql`ALTER TABLE wf_messages ADD COLUMN IF NOT EXISTS audio_data text`;
+ await sql`ALTER TABLE wf_messages ADD COLUMN IF NOT EXISTS audio_type text`;
  await sql`CREATE INDEX IF NOT EXISTS wf_messages_room_idx ON wf_messages(room_id,id)`;
  await sql`CREATE TABLE IF NOT EXISTS wf_limits (bucket text PRIMARY KEY, hits integer NOT NULL, expires timestamptz NOT NULL)`;
 }
@@ -31,7 +33,7 @@ return async function handler(req,res){
  try{
  const sql=connect(connection);if(!initialized)initialized=init(sql).catch(e=>{initialized=null;throw e;});await initialized;
  const b=req.body||{};const action=req.method==='GET'?'load':b.action;
- if(JSON.stringify(b).length>12000)return res.status(413).json({error:'Conteúdo muito grande.'});
+ if(JSON.stringify(b).length>1450000)return res.status(413).json({error:'Conteúdo muito grande.'});
  const cookie=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith('wf_session='))?.slice(11)||'';
  const [user]=cookie?await sql`SELECT u.id,u.name,u.room_id FROM wf_sessions s JOIN wf_users u ON u.id=s.user_id WHERE s.token_hash=${hash(cookie)} AND s.expires>now()`:[];
  const fail=(status,error)=>res.status(status).json({error});
@@ -67,6 +69,12 @@ return async function handler(req,res){
  return res.json({user:{id:account.id,name:account.name},invite});
  }
  if(!user)return fail(401,'Entre para conversar.');
+ if(req.method==='GET'&&req.query?.audio){
+ const id=String(req.query.audio);if(!/^\d{1,19}$/.test(id))return fail(400,'Áudio inválido.');
+ const [audio]=await sql`SELECT audio_data,audio_type FROM wf_messages WHERE id=${id} AND room_id=${user.room_id} AND (recipient_id IS NULL OR sender_id=${user.id} OR recipient_id=${user.id})`;
+ if(!audio?.audio_data)return fail(404,'Áudio não disponível.');
+ const bytes=Buffer.from(audio.audio_data,'base64');res.setHeader('Content-Type',audio.audio_type);res.setHeader('Content-Length',bytes.length);return res.end(bytes);
+ }
  if(action==='pin'){
  const pin=String(b.pin||''),current=String(b.current||'');
  if(!/^\d{4}$/.test(pin)||current.length>128)return fail(400,'O PIN precisa ter exatamente 4 números.');
@@ -88,10 +96,19 @@ return async function handler(req,res){
  await sql`DELETE FROM wf_messages WHERE room_id=${user.room_id} AND id<=${String(b.before)} AND ((${recipient}='' AND recipient_id IS NULL) OR (${recipient}<>'' AND ((sender_id=${user.id} AND recipient_id=${recipient}) OR (sender_id=${recipient} AND recipient_id=${user.id}))))`;
  }
  if(action==='send'){
- const body=String(b.body||'').trim();if(!body||body.length>2000)return fail(400,'Escreva uma mensagem de até 2000 caracteres.');
- await sql`INSERT INTO wf_messages(room_id,sender_id,body,recipient_id) VALUES (${user.room_id},${user.id},${body},${recipient||null})`;
+ const body=String(b.body||'').trim();if((!body&&!b.audio)||body.length>2000)return fail(400,'Escreva uma mensagem de até 2000 caracteres.');
+ let audioData=null,audioType=null;
+ if(b.audio){
+ const {data,type}=b.audio;
+ if(typeof data!=='string'||data.length>1398104||!data.length||!/^[A-Za-z0-9+/]+={0,2}$/.test(data)||!['audio/webm','audio/mp4','audio/ogg'].includes(type))return fail(400,'Áudio inválido ou maior que 1 MB.');
+ const bytes=Buffer.from(data,'base64');
+ const valid=type==='audio/webm'?bytes.subarray(0,4).toString('hex')==='1a45dfa3':type==='audio/mp4'?bytes.subarray(4,8).toString()==='ftyp':bytes.subarray(0,4).toString()==='OggS';
+ if(!valid||bytes.length>1048576)return fail(400,'Formato de áudio inválido.');
+ audioData=data;audioType=type;
+ }
+ await sql`INSERT INTO wf_messages(room_id,sender_id,body,recipient_id,audio_data,audio_type) VALUES (${user.room_id},${user.id},${body},${recipient||null},${audioData},${audioType})`;
  }else if(!['load','clear'].includes(action))return fail(400,'Ação inválida.');
- const rows=await sql`SELECT m.id,m.body,m.sender_id,m.created_at,u.name FROM wf_messages m JOIN wf_users u ON u.id=m.sender_id WHERE m.room_id=${user.room_id} AND ((${recipient}='' AND m.recipient_id IS NULL) OR (${recipient}<>'' AND ((m.sender_id=${user.id} AND m.recipient_id=${recipient}) OR (m.sender_id=${recipient} AND m.recipient_id=${user.id})))) ORDER BY m.id DESC LIMIT 100`;
+ const rows=await sql`SELECT m.id,m.body,m.sender_id,m.created_at,u.name,m.audio_type FROM wf_messages m JOIN wf_users u ON u.id=m.sender_id WHERE m.room_id=${user.room_id} AND ((${recipient}='' AND m.recipient_id IS NULL) OR (${recipient}<>'' AND ((m.sender_id=${user.id} AND m.recipient_id=${recipient}) OR (m.sender_id=${recipient} AND m.recipient_id=${user.id})))) ORDER BY m.id DESC LIMIT 100`;
  const members=await sql`SELECT id,name FROM wf_users WHERE room_id=${user.room_id} AND id<>${user.id} ORDER BY name,id`;
  return res.json({user:{id:user.id,name:user.name},members,messages:rows.reverse()});
  }catch(e){return res.status(e.code==='23505'?409:500).json({error:e.code==='23505'?'Esse usuário já existe. Escolha outro.':'Não foi possível concluir. Confira a conexão e tente novamente.'});}
