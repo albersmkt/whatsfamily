@@ -19,3 +19,6 @@ Senhas com scrypt e salt, sessões aleatórias de 30 dias em cookies HttpOnly/Se
 
 ## Limpar histórico
 Na conversa, toque em **Limpar conversa** e confirme. Isso apaga as mensagens anteriores para todos os integrantes daquela família, sem afetar outras famílias ou contas. Mensagens novas, posteriores à última exibida ao confirmar, são preservadas. Não há opção de desfazer.
+
+## Conversas individuais
+Os integrantes da mesma família aparecem na barra lateral (menu ☰ no celular). Selecione um nome para conversar em particular ou Nossa família para o grupo. Mensagens antigas permanecem no grupo. A API verifica a família e os dois participantes em cada leitura, envio e exclusão. Limpar conversa apaga somente o histórico selecionado, para seus participantes. A coluna de destinatário é adicionada automaticamente, preservando os dados existentes.

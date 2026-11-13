@@ -10,6 +10,7 @@ async function init(sql){
  await sql`CREATE TABLE IF NOT EXISTS wf_users (id text PRIMARY KEY, room_id text NOT NULL REFERENCES wf_rooms(id), username text UNIQUE NOT NULL, name text NOT NULL, password text NOT NULL)`;
  await sql`CREATE TABLE IF NOT EXISTS wf_sessions (token_hash text PRIMARY KEY, user_id text NOT NULL REFERENCES wf_users(id), expires timestamptz NOT NULL)`;
  await sql`CREATE TABLE IF NOT EXISTS wf_messages (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, room_id text NOT NULL REFERENCES wf_rooms(id), sender_id text NOT NULL REFERENCES wf_users(id), body text NOT NULL, created_at timestamptz NOT NULL DEFAULT now())`;
+ await sql`ALTER TABLE wf_messages ADD COLUMN IF NOT EXISTS recipient_id text REFERENCES wf_users(id)`;
  await sql`CREATE INDEX IF NOT EXISTS wf_messages_room_idx ON wf_messages(room_id,id)`;
  await sql`CREATE TABLE IF NOT EXISTS wf_limits (bucket text PRIMARY KEY, hits integer NOT NULL, expires timestamptz NOT NULL)`;
 }
@@ -80,16 +81,19 @@ return async function handler(req,res){
  }
  if(action==='invite'){const invite=inviteCode();await sql`UPDATE wf_rooms SET invite_hash=${hash(invite)} WHERE id=${user.room_id}`;return res.json({invite});}
  if(action==='logout'){await sql`DELETE FROM wf_sessions WHERE token_hash=${hash(cookie)}`;res.setHeader('Set-Cookie','wf_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0');return res.json({ok:true});}
+ const recipient=String(b.recipient||'');
+ if(recipient){const [peer]=await sql`SELECT id FROM wf_users WHERE id=${recipient} AND room_id=${user.room_id} AND id<>${user.id}`;if(!peer)return fail(403,'Integrante não disponível nesta família.');}
  if(action==='clear'){
  if(b.confirm!==true||!/^\d{1,19}$/.test(String(b.before||'')))return fail(400,'Confirme quais mensagens deseja apagar.');
- await sql`DELETE FROM wf_messages WHERE room_id=${user.room_id} AND id<=${String(b.before)}`;
+ await sql`DELETE FROM wf_messages WHERE room_id=${user.room_id} AND id<=${String(b.before)} AND ((${recipient}='' AND recipient_id IS NULL) OR (${recipient}<>'' AND ((sender_id=${user.id} AND recipient_id=${recipient}) OR (sender_id=${recipient} AND recipient_id=${user.id}))))`;
  }
  if(action==='send'){
  const body=String(b.body||'').trim();if(!body||body.length>2000)return fail(400,'Escreva uma mensagem de até 2000 caracteres.');
- await sql`INSERT INTO wf_messages(room_id,sender_id,body) VALUES (${user.room_id},${user.id},${body})`;
+ await sql`INSERT INTO wf_messages(room_id,sender_id,body,recipient_id) VALUES (${user.room_id},${user.id},${body},${recipient||null})`;
  }else if(!['load','clear'].includes(action))return fail(400,'Ação inválida.');
- const rows=await sql`SELECT m.id,m.body,m.sender_id,m.created_at,u.name FROM wf_messages m JOIN wf_users u ON u.id=m.sender_id WHERE m.room_id=${user.room_id} ORDER BY m.id DESC LIMIT 100`;
- return res.json({user:{id:user.id,name:user.name},messages:rows.reverse()});
+ const rows=await sql`SELECT m.id,m.body,m.sender_id,m.created_at,u.name FROM wf_messages m JOIN wf_users u ON u.id=m.sender_id WHERE m.room_id=${user.room_id} AND ((${recipient}='' AND m.recipient_id IS NULL) OR (${recipient}<>'' AND ((m.sender_id=${user.id} AND m.recipient_id=${recipient}) OR (m.sender_id=${recipient} AND m.recipient_id=${user.id})))) ORDER BY m.id DESC LIMIT 100`;
+ const members=await sql`SELECT id,name FROM wf_users WHERE room_id=${user.room_id} AND id<>${user.id} ORDER BY name,id`;
+ return res.json({user:{id:user.id,name:user.name},members,messages:rows.reverse()});
  }catch(e){return res.status(e.code==='23505'?409:500).json({error:e.code==='23505'?'Esse usuário já existe. Escolha outro.':'Não foi possível concluir. Confira a conexão e tente novamente.'});}
 }
 
