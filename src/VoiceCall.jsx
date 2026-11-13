@@ -1,9 +1,10 @@
 import React,{useEffect,useRef,useState} from 'react';
 async function signal(body){const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'call',...body})});const data=await r.json();if(!r.ok)throw new Error(data.error||'Falha na chamada.');return data;}
 async function completeIce(pc){if(pc.iceGatheringState==='complete')return;await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{pc.removeEventListener('icegatheringstatechange',check);reject(new Error('Não foi possível preparar a conexão. Tente outra rede.'));},12000);function check(){if(pc.iceGatheringState==='complete'){clearTimeout(timer);pc.removeEventListener('icegatheringstatechange',check);resolve();}}pc.addEventListener('icegatheringstatechange',check);check();});}
-export default function VoiceCall({user,peer,disabled,onCallBusy}){
+export default function VoiceCall({user,peer,disabled,onCallBusy,sound,soundEnabled=false}){
  const [call,setCall]=useState(null),[phase,setPhase]=useState('idle'),[error,setError]=useState(''),[muted,setMuted]=useState(false);
  const pc=useRef(null),media=useRef(null),remote=useRef(null),current=useRef(null),alive=useRef(true),working=useRef(false),generation=useRef(0),connectTimer=useRef(null);
+ useEffect(()=>{if(phase!=='incoming'||!soundEnabled||!sound)return;sound.play('ring');const timer=setInterval(()=>sound.play('ring'),2500);return()=>{clearInterval(timer);sound.stop();};},[phase,soundEnabled,sound]);
  function cleanup(){clearTimeout(connectTimer.current);if(pc.current){pc.current.onconnectionstatechange=null;pc.current.close();pc.current=null;}media.current?.getTracks().forEach(t=>t.stop());media.current=null;if(remote.current)remote.current.srcObject=null;}
  function reset(){generation.current++;cleanup();current.current=null;working.current=false;if(alive.current){setCall(null);setPhase('idle');setMuted(false);onCallBusy(false);}}
  async function end(){const id=current.current?.id;reset();if(id)try{await signal({op:'end',id});}catch{if(alive.current)setError('A chamada foi encerrada neste aparelho. O outro lado será desconectado automaticamente.');}}

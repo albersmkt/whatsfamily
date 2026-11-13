@@ -95,5 +95,12 @@ test('family authentication, persistence, isolation and logout',async()=>{
  const unanswered=await call({action:'call',op:'start',recipient:child.data.user.id,sdp:offer},father.cookie);
  await db.query("UPDATE wf_calls SET expires=now()-interval '1 second' WHERE id=$1",[unanswered.data.id]);
  assert.equal((await call({action:'call',op:'status'},father.cookie)).data.call,null);
+ const baseline=(await call(null,father.cookie)).data.notification_cursor;
+ await call({action:'send',body:'Minha mensagem'},father.cookie);
+ assert.equal((await call(null,father.cookie)).data.notification_cursor,baseline);
+ await call({action:'send',recipient:child.data.user.id,body:'Privada de terceiro'},third.cookie);
+ assert.equal((await call(null,father.cookie)).data.notification_cursor,baseline);
+ await call({action:'send',recipient:father.data.user.id,body:'Aviso em outra conversa'},childAgain.cookie);
+ const notified=await call(null,father.cookie);assert.ok(BigInt(notified.data.notification_cursor)>BigInt(baseline));assert.ok(!notified.data.messages.some(m=>m.body==='Aviso em outra conversa'));
  await db.close();
 });

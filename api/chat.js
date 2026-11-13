@@ -116,7 +116,8 @@ return async function handler(req,res){
  }else if(!['load','clear'].includes(action))return fail(400,'Ação inválida.');
  const rows=await sql`SELECT m.id,m.body,m.sender_id,m.created_at,u.name,m.audio_type FROM wf_messages m JOIN wf_users u ON u.id=m.sender_id WHERE m.room_id=${user.room_id} AND ((${recipient}='' AND m.recipient_id IS NULL) OR (${recipient}<>'' AND ((m.sender_id=${user.id} AND m.recipient_id=${recipient}) OR (m.sender_id=${recipient} AND m.recipient_id=${user.id})))) ORDER BY m.id DESC LIMIT 100`;
  const members=await sql`SELECT id,name FROM wf_users WHERE room_id=${user.room_id} AND id<>${user.id} ORDER BY name,id`;
- return res.json({user:{id:user.id,name:user.name},members,messages:rows.reverse()});
+ const [notification]=await sql`SELECT coalesce(max(id),0)::text AS cursor FROM wf_messages WHERE room_id=${user.room_id} AND sender_id<>${user.id} AND (recipient_id IS NULL OR recipient_id=${user.id})`;
+ return res.json({user:{id:user.id,name:user.name},members,notification_cursor:notification.cursor,messages:rows.reverse()});
  }catch(e){return res.status(e.code==='23505'?409:500).json({error:e.code==='23505'?'Esse usuário já existe. Escolha outro.':'Não foi possível concluir. Confira a conexão e tente novamente.'});}
 }
 
