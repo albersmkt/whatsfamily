@@ -1,14 +1,31 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import './style.css';
-async function api(body){const r=await fetch('/api/chat',{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const data=await r.json();if(!r.ok)throw Object.assign(new Error(data.error),{status:r.status});return data;}
-function App(){
+async function api(body){
+ const r=await fetch('/api/chat',{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
+ let data;
+ try{data=await r.json();}catch{throw new Error('Não foi possível atualizar a conversa. Tente novamente.');}
+ if(!r.ok)throw Object.assign(new Error(typeof data?.error==='string'?data.error:'Não foi possível concluir. Tente novamente.'),{status:r.status});
+ if(!body||body.action==='send'){
+  if(!data?.user||typeof data.user.id!=='string'||typeof data.user.name!=='string'||!Array.isArray(data.messages)||data.messages.some(m=>!m||typeof m.body!=='string'||typeof m.name!=='string'||typeof m.sender_id!=='string'||!['string','number'].includes(typeof m.id))){
+   throw new Error('Não foi possível atualizar a conversa. Aguarde a próxima atualização antes de reenviar.');
+  }
+ }
+ return data;
+}
+export function App(){
  const [user,setUser]=useState(null),[mode,setMode]=useState('login'),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[messages,setMessages]=useState([]),[text,setText]=useState(''),[invite,setInvite]=useState('');const end=useRef();
  useEffect(()=>{api().then(d=>{setUser(d.user);setMessages(d.messages);}).catch(e=>{if(e.status!==401)setError(e.message);}).finally(()=>setLoading(false));},[]);
  useEffect(()=>{if(!user)return;let active=true;const timer=setInterval(()=>api().then(d=>{if(active){setMessages(d.messages);setError('');}}).catch(e=>{if(active){setError(e.message);if(e.status===401){setUser(null);setMessages([]);}}}),3000);return()=>{active=false;clearInterval(timer);};},[user]);
- useEffect(()=>end.current?.scrollIntoView({behavior:'smooth'}),[messages.length]);
+ useEffect(()=>{end.current?.scrollIntoView?.({behavior:'smooth'});},[messages.length]);
  async function auth(e){e.preventDefault();setBusy(true);setError('');const values=Object.fromEntries(new FormData(e.currentTarget));try{const d=await api({...values,action:mode});setUser(d.user);setMessages([]);setInvite(d.invite||'');}catch(e){setError(e.message);}finally{setBusy(false);}}
  async function send(e){e.preventDefault();if(!text.trim()||busy)return;setBusy(true);try{const d=await api({action:'send',body:text});setMessages(d.messages);setText('');setError('');}catch(e){setError(e.message);}finally{setBusy(false);}}
  async function logout(){try{await api({action:'logout'});setUser(null);setMessages([]);setInvite('');setText('');}catch(e){setError(e.message);}}
  return <div className="shell"><aside><a className="brand" href="/"><img src="/icon.svg" alt=""/>WhatsFamily</a><div className="intro"><span className="eyebrow">PERTINHO, MESMO DE LONGE</span><h1>Nosso pequeno<br/>mundo, conectado.</h1><p>Um cantinho só da família.<br/>Para contar do dia, mandar carinho<br/>e estar presente.</p><div className="art">♡<span>casa é onde a gente se encontra</span></div></div><footer>Sua família entra somente com seu convite.</footer></aside><main>{loading?<p>Carregando…</p>:!user?<section className="login"><span className="pill">✦ Nosso cantinho</span><h2>{mode==='login'?'Que bom ter você aqui.':mode==='create'?'Vamos reunir a família?':'Você faz parte de casa.'}</h2><p>{mode==='login'?'Entre para conversar.':mode==='create'?'Crie seu acesso e receba o código para sua filha entrar.':'Use o código recebido da sua família.'}</p><nav className="tabs">{[['login','Entrar'],['create','Criar família'],['join','Tenho convite']].map(([key,label])=><button type="button" key={key} className={mode===key?'':'quiet'} onClick={()=>{setMode(key);setError('');}}>{label}</button>)}</nav><form onSubmit={auth} key={mode}>{mode!=='login'&&<label>Seu nome<input name="name" required maxLength={60} autoComplete="name"/></label>}<label>Usuário<input name="username" required minLength={3} maxLength={40} pattern="[a-zA-Z0-9_.\-]+" autoCapitalize="none" autoComplete="username" placeholder="Ex.: papai.alves"/></label><label>Senha<input name="password" type="password" required minLength={10} maxLength={128} autoComplete={mode==='login'?'current-password':'new-password'} placeholder="Pelo menos 10 caracteres"/></label>{mode==='join'&&<label>Código da família<input name="invite" required autoCapitalize="none"/></label>}<button disabled={busy}>{busy?'Aguarde…':mode==='login'?'Entrar →':mode==='create'?'Criar nossa família →':'Entrar na família →'}</button></form></section>:<section className="chat"><header><div className="avatar">⌂</div><div><h2>Nossa família</h2><small>Olá, {user.name} · atualização a cada 3 segundos</small></div><button className="quiet" onClick={logout}>Sair</button></header>{invite&&<div className="notice"><strong>Convide sua filha</strong><p>No celular dela, abra este mesmo endereço, toque em “Tenho convite” e use o código abaixo. Guarde-o em um local privado; ele aparece somente agora.</p><input aria-label="Código do convite" readOnly value={invite} onFocus={e=>e.target.select()}/><button onClick={()=>navigator.clipboard.writeText(invite).then(()=>setError('Código copiado.')).catch(()=>setError('Selecione e copie o código acima.'))}>Copiar código</button><button className="quiet" onClick={()=>setInvite('')}>Fechar</button></div>}<div className="messages"><div className="welcome"><span>♡</span><h3>As melhores conversas começam em casa.</h3><p>Este espaço é só de vocês.</p></div>{messages.map(m=><article key={m.id} className={'bubble '+(m.sender_id===user.id?'mine':'')}><strong>{m.name}</strong><p>{m.body}</p><time>{new Date(m.created_at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</time></article>)}<div ref={end}/></div><form className="compose" onSubmit={send}><input aria-label="Mensagem" placeholder="Escreva um carinho…" value={text} maxLength={2000} onChange={e=>setText(e.target.value)}/><button disabled={busy||!text.trim()}>Enviar ↑</button></form></section>}{error&&<p className="error" role="alert">{error}</p>}</main></div>;
-}createRoot(document.getElementById('root')).render(<App/>);
+}
+class ChatBoundary extends React.Component {
+ state={failed:false};
+ static getDerivedStateFromError(){return {failed:true};}
+ render(){return this.state.failed?<main><section className="login"><h2>Vamos voltar à conversa.</h2><p>Houve um problema ao exibir a tela. Suas mensagens salvas continuam disponíveis.</p><button onClick={()=>window.location.reload()}>Voltar à conversa</button></section></main>:this.props.children;}
+}
+createRoot(document.getElementById('root')).render(<ChatBoundary><App/></ChatBoundary>);
