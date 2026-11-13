@@ -80,10 +80,14 @@ return async function handler(req,res){
  }
  if(action==='invite'){const invite=inviteCode();await sql`UPDATE wf_rooms SET invite_hash=${hash(invite)} WHERE id=${user.room_id}`;return res.json({invite});}
  if(action==='logout'){await sql`DELETE FROM wf_sessions WHERE token_hash=${hash(cookie)}`;res.setHeader('Set-Cookie','wf_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0');return res.json({ok:true});}
+ if(action==='clear'){
+ if(b.confirm!==true||!/^\d{1,19}$/.test(String(b.before||'')))return fail(400,'Confirme quais mensagens deseja apagar.');
+ await sql`DELETE FROM wf_messages WHERE room_id=${user.room_id} AND id<=${String(b.before)}`;
+ }
  if(action==='send'){
  const body=String(b.body||'').trim();if(!body||body.length>2000)return fail(400,'Escreva uma mensagem de até 2000 caracteres.');
  await sql`INSERT INTO wf_messages(room_id,sender_id,body) VALUES (${user.room_id},${user.id},${body})`;
- }else if(action!=='load')return fail(400,'Ação inválida.');
+ }else if(!['load','clear'].includes(action))return fail(400,'Ação inválida.');
  const rows=await sql`SELECT m.id,m.body,m.sender_id,m.created_at,u.name FROM wf_messages m JOIN wf_users u ON u.id=m.sender_id WHERE m.room_id=${user.room_id} ORDER BY m.id DESC LIMIT 100`;
  return res.json({user:{id:user.id,name:user.name},messages:rows.reverse()});
  }catch(e){return res.status(e.code==='23505'?409:500).json({error:e.code==='23505'?'Esse usuário já existe. Escolha outro.':'Não foi possível concluir. Confira a conexão e tente novamente.'});}

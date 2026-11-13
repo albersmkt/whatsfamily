@@ -42,5 +42,15 @@ test('family authentication, persistence, isolation and logout',async()=>{
  assert.equal((await call({action:'login',username:'father',password:'0123'})).status,429);
  const pinFamily=await call({action:'create',username:'pinuser',name:'PIN',password:'0456'});assert.equal(pinFamily.status,200);
  assert.equal((await call({action:'login',username:'pinuser',password:'0456'})).status,200);
+ const prior=await call(null,father.cookie);const before=String(prior.data.messages.at(-1).id);
+ await call({action:'send',body:'Outra família'},other.cookie);
+ await call({action:'send',body:'Mensagem nova'},father.cookie);
+ assert.equal((await call({action:'clear',before,confirm:true})).status,401);
+ assert.equal((await call({action:'clear',before},father.cookie)).status,400);
+ assert.equal((await call(null,father.cookie)).data.messages.length,3);
+ const cleared=await call({action:'clear',before,confirm:true},father.cookie);
+ assert.equal(cleared.status,200);assert.deepEqual(cleared.data.messages.map(m=>m.body),['Mensagem nova']);
+ assert.equal((await call(null,other.cookie)).data.messages[0].body,'Outra família');
+ assert.equal((await call(null,father.cookie)).data.messages.length,1);
  await db.close();
 });
