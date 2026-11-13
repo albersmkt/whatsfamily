@@ -2,6 +2,8 @@ import {neon} from '@neondatabase/serverless';
 import {randomBytes, scryptSync, timingSafeEqual, createHash} from 'node:crypto';
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const secret=()=>randomBytes(32).toString('hex');
+const inviteCode=()=>Array.from(randomBytes(10),b=>'0123456789abcdefghjkmnpqrstvwxyz'[b%32]).join('');
+const normalizeInvite=value=>String(value||'').toLowerCase().replace(/[\s-]/g,'');
 
 async function init(sql){
  await sql`CREATE TABLE IF NOT EXISTS wf_rooms (id text PRIMARY KEY, invite_hash text UNIQUE NOT NULL)`;
@@ -43,10 +45,10 @@ return async function handler(req,res){
  const name=String(b.name||'').trim();if(!name||name.length>60)return fail(400,'Informe um nome de até 60 caracteres.');
  const id=secret(),salt=randomBytes(16).toString('hex');const digest=salt+':'+scryptSync(password,salt,64).toString('hex');
  if(action==='create'){
- invite=secret();const room=secret();
+ invite=inviteCode();const room=secret();
  const result=await sql.transaction([sql`INSERT INTO wf_rooms(id,invite_hash) VALUES (${room},${hash(invite)})`,sql`INSERT INTO wf_users(id,room_id,username,name,password) VALUES (${id},${room},${username},${name},${digest}) RETURNING *`]);account=result[1][0];
  }else{
- const [room]=await sql`SELECT id FROM wf_rooms WHERE invite_hash=${hash(String(b.invite||''))}`;
+ const [room]=await sql`SELECT id FROM wf_rooms WHERE invite_hash=${hash(normalizeInvite(b.invite))}`;
  if(!room)return fail(400,'Convite inválido. Confira com sua família.');
  [account]=await sql`INSERT INTO wf_users(id,room_id,username,name,password) VALUES (${id},${room.id},${username},${name},${digest}) RETURNING *`;
  }
@@ -56,6 +58,7 @@ return async function handler(req,res){
  return res.json({user:{id:account.id,name:account.name},invite});
  }
  if(!user)return fail(401,'Entre para conversar.');
+ if(action==='invite'){const invite=inviteCode();await sql`UPDATE wf_rooms SET invite_hash=${hash(invite)} WHERE id=${user.room_id}`;return res.json({invite});}
  if(action==='logout'){await sql`DELETE FROM wf_sessions WHERE token_hash=${hash(cookie)}`;res.setHeader('Set-Cookie','wf_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0');return res.json({ok:true});}
  if(action==='send'){
  const body=String(b.body||'').trim();if(!body||body.length>2000)return fail(400,'Escreva uma mensagem de até 2000 caracteres.');

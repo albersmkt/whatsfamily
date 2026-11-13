@@ -7,7 +7,7 @@ Chat privado por convite, React + API Vercel + Neon Postgres.
 3. Guarde o código exibido. No celular da filha, abra o mesmo endereço, toque em **Tenho convite** e crie o acesso dela usando esse código. Compartilhe o código somente com a família.
 4. Nas próximas vezes basta **Entrar**. Adicione o endereço à tela inicial pelo navegador.
 
-As tabelas são criadas automaticamente pela API. Famílias diferentes têm salas isoladas. Não é necessário SQL manual, Supabase ou e-mail. O convite é permanente; quem o possui pode entrar. Nesta versão não há recuperação de senha nem painel para remover membros. Guarde os acessos e o convite com cuidado.
+As tabelas são criadas automaticamente pela API. Famílias diferentes têm salas isoladas. Não é necessário SQL manual, Supabase ou e-mail. O convite tem 10 caracteres e também pode ser compartilhado como link com preenchimento automático. Toque em Convidar para gerar outro; isso invalida o convite anterior, sem remover contas existentes. Quem possui o convite pode entrar. Nesta versão não há recuperação de senha nem painel para remover membros. Guarde os acessos e o convite com cuidado.
 
 ## Desenvolvimento
 Node 24. `npm ci --cache /tmp/npm-cache`, `npm run build`. Para executar frontend e API juntos use `npx vercel dev` com DATABASE_URL configurada no ambiente do servidor. `npm run dev` serve apenas a interface e não executa a API. Vercel detecta Vite e as funções em api/. Build: npm run build; saída: dist.

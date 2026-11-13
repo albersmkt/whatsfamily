@@ -14,10 +14,10 @@ test('family authentication, persistence, isolation and logout',async()=>{
  result.cookie=result.headers['Set-Cookie']?.split(';')[0];return result;
  }
  assert.equal((await call()).status,401);
- const father=await call({action:'create',username:'father',name:'Pai',password:'correct-password'});assert.equal(father.status,200);assert.ok(father.data.invite);
+ const father=await call({action:'create',username:'father',name:'Pai',password:'correct-password'});assert.equal(father.status,200);assert.match(father.data.invite,/^[0-9a-z]{10}$/);
  assert.match(father.headers['Set-Cookie'],/HttpOnly; Secure; SameSite=Lax/);
  assert.equal((await call({action:'join',username:'child',name:'Filha',password:'child-password',invite:'wrong'})).status,400);
- const child=await call({action:'join',username:'child',name:'Filha',password:'child-password',invite:father.data.invite});assert.equal(child.status,200);
+ const child=await call({action:'join',username:'child',name:'Filha',password:'child-password',invite:father.data.invite.slice(0,5).toUpperCase()+' - '+father.data.invite.slice(5).toUpperCase()});assert.equal(child.status,200);
  await call({action:'send',body:'Oi, filha!'},father.cookie);
  assert.equal((await call(null,child.cookie)).data.messages[0].body,'Oi, filha!');
  await call({action:'send',body:'Oi, pai!'},child.cookie);
@@ -29,5 +29,9 @@ test('family authentication, persistence, isolation and logout',async()=>{
  assert.equal((await call({action:'login',username:'father',password:'correct-password'})).status,200);
  assert.equal((await call({action:'send',body:'a'.repeat(2001)},father.cookie)).status,400);
  await call({action:'logout'},child.cookie);assert.equal((await call(null,child.cookie)).status,401);
+ const rotated=await call({action:'invite'},father.cookie);assert.match(rotated.data.invite,/^[0-9a-z]{10}$/);
+ assert.equal((await call({action:'invite'})).status,401);
+ assert.equal((await call({action:'join',username:'oldcode',name:'Outro',password:'other-password',invite:father.data.invite})).status,400);
+ assert.equal((await call({action:'join',username:'newcode',name:'Outro',password:'other-password',invite:rotated.data.invite})).status,200);
  await db.close();
 });
